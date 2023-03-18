@@ -1,0 +1,153 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+
+plugins {
+    id 'idea'
+    id 'eclipse'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle'
+    id 'org.spongepowered.mixin'
+    id 'org.parchmentmc.librarian.forgegradle'
+}
+
+group = "${project.modGroup}"
+version = "${project.mcVersion}-${project.modVersion}"
+archivesBaseName = "${project.modName}"
+
+if (System.getenv('RELEASE_TYPE') != null) {
+    status = System.getenv('RELEASE_TYPE').toLowerCase()
+    if (status == 'snapshot') status = status.toUpperCase()
+} else {
+    status = 'SNAPSHOT'
+}
+
+if (status != 'release') {
+    version = "${version}-${status}"
+}
+
+project.ext.displayUrl = "https://github.com/${project.githubRepo}"
+project.ext.issueTrackerUrl = "https://github.com/${project.githubRepo}/issues"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(project.javaVersion)
+    }
+}
+
+minecraft {
+    if (project.hasProperty('parchmentVersion') && !project.parchmentVersion.isBlank()) {
+        if (project.parchmentVersion == project.mcVersion) {
+            mappings channel: 'parchment', version: "${project.parchmentDate}-${project.parchmentVersion}"
+        } else {
+            mappings channel: 'parchment', version: "${project.parchmentVersion}-${project.parchmentDate}-${project.mcVersion}"
+        }
+    } else {
+        mappings channel: 'official', version: project.mcVersion
+    }
+
+    // accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
+
+    runs {
+        client {
+            ideaModule "${project.name.replace(' ', '_')}.main"
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.enabledGameTestNamespaces', "${project.modId}"
+            mods.create("${project.modId}") {
+                source sourceSets.main as SourceSet
+            }
+        }
+        server {
+            ideaModule "${project.name.replace(' ', '_')}.main"
+            singleInstance true
+            property 'forge.logging.markers', 'REGISTRIES'
+            mods.create("${project.modId}") {
+                source sourceSets.main as SourceSet
+            }
+        }
+        data {
+            ideaModule "${project.name.replace(' ', '_')}.data"
+            singleInstance true
+            args '--mod', project.modId, '--all', '--output', file('src/main/generated/'), '--existing', file('src/main/resources/')//, '--mixin.config', "${project.modId}_data.mixins.json"
+            mods.create("${project.modId}") {
+                source sourceSets.main as SourceSet
+            }
+        }
+        /*gameTestServer {
+            ideaModule "${project.name.replace(' ', '_')}.test"
+            singleInstance true
+            setForceExit false // To allow integration tests to run in CI
+            jvmArg '-ea' // Enable assertions
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.enabledGameTestNamespaces', "${project.modId}"
+
+            mods.create("${project.modId}") {
+                source sourceSets.main as SourceSet
+            }
+        }*/
+    }
+    runs.configureEach {
+        workingDirectory project.file("run/${it.name}") as File
+        property 'forge.logging.console.level', 'debug'
+        if (!System.getenv('GITHUB_ACTIONS')) {
+            jvmArg '-XX:+AllowEnhancedClassRedefinition'
+        }
+    }
+}
+
+mixin {
+    add sourceSets.main, "${project.modId}.refmap.json"
+    config "${project.modId}.mixins.json"
+}
+
+sourceSets.main.resources {
+    srcDir 'src/main/generated'
+    exclude '.cache'
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${project.mcVersion}-${project.forgeVersion}"
+    annotationProcessor "org.spongepowered:mixin:${project.mixinVersion}:processor"
+    compileOnly 'org.jetbrains:annotations:23.0.0'
+}
+
+jar {
+    manifest {
+        attributes([
+                "Specification-Title": project.modId,
+                "Specification-Vendor": "Minecraftschurli",
+                "Specification-Version": "1", // We are version 1 of ourselves
+                "Implementation-Title": project.name,
+                "Implementation-Version": project.jar.archiveVersion,
+                "Implementation-Vendor": "Minecraftschurli",
+                "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
+}
+
+jar.finalizedBy('reobfJar')
+
+processResources {
+    //noinspection GroovyAccessibility
+    Map<String, ?> buildProps = project.properties.clone() as Map<String, ?>
+    buildProps.values().removeIf { !it.getClass().isPrimitive() && !(it instanceof CharSequence) }
+    inputs.properties buildProps
+
+    filesMatching(['META-INF/mods.toml']) {
+        expand buildProps
+    }
+
+    doLast {
+        fileTree(dir: outputs.files.asPath, include: "**/*.json").each {
+            it.text = JsonOutput.toJson(new JsonSlurper().parse(it))
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
