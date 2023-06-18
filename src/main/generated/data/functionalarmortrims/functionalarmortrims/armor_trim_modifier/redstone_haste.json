@@ -1,11 +1,12 @@
 {
   "modifiers": [
     {
-      "amount": 0.1,
+      "type": "functionalarmortrims:attribute",
+      "amount": 0.10000000149011612,
       "attribute": "minecraft:generic.attack_speed",
       "name": "Mining Speed",
       "operation": "multiply_total",
-      "uuid": "3d420c15-2604-4516-bac9-9ff3f9fe934c"
+      "uuid": "02abf54f-9cd8-4e42-af22-f79fc86ee20b"
     }
   ],
   "trim_material": "minecraft:redstone"

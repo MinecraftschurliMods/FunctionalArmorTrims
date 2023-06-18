@@ -1,0 +1,8 @@
+{
+  "modifiers": [
+    {
+      "type": "functionalarmortrims:piglin_ignore"
+    }
+  ],
+  "trim_material": "minecraft:gold"
+}
